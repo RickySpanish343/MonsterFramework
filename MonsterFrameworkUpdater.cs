@@ -17,7 +17,7 @@ namespace Oxide.Plugins
         private const string FileName = "Oxide.Ext.MonsterFramework.dll";
         private const string RuntimeType = "Oxide.Ext.MonsterFramework.MonsterRuntime";
         private const string ReleaseUrl = "https://raw.githubusercontent.com/RickySpanish343/MonsterFramework/main/release.json";
-        private const string DownloadUrl = "https://github.com/RickySpanish343/MonsterFramework/releases/download/v{0}/" + FileName;
+        private const string DownloadUrl = "https://raw.githubusercontent.com/RickySpanish343/MonsterFramework/main/" + FileName;
 
         private Coroutine routine;
         private UnityWebRequest request;
@@ -68,7 +68,7 @@ namespace Oxide.Plugins
             }
 
             Puts(installed == null ? $"Downloading Monster Framework {latest}..." : $"Monster Framework {latest} is available (installed {installed}). Downloading...");
-            request = UnityWebRequest.Get(string.Format(DownloadUrl, release.Version));
+            request = UnityWebRequest.Get(DownloadUrl);
             request.timeout = 120;
             yield return request.SendWebRequest();
             if (request.result != UnityWebRequest.Result.Success)
