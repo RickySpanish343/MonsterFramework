@@ -5,22 +5,25 @@ using System.Reflection;
 using System.Security.Cryptography;
 using Newtonsoft.Json;
 using Oxide.Core;
+using Oxide.Core.Extensions;
 using UnityEngine;
 using UnityEngine.Networking;
 
 namespace Oxide.Plugins
 {
-    [Info("MonsterFrameworkUpdater", "RickySpanish", "1.0.0")]
+    [Info("MonsterFrameworkUpdater", "RickySpanish", "1.1.0")]
     [Description("Installs the Monster Framework extension and keeps it up to date")]
     public class MonsterFrameworkUpdater : RustPlugin
     {
         private const string FileName = "Oxide.Ext.MonsterFramework.dll";
-        private const string RuntimeType = "Oxide.Ext.MonsterFramework.MonsterRuntime";
+        private const string ExtensionName = "MonsterFramework";
         private const string ReleaseUrl = "https://raw.githubusercontent.com/RickySpanish343/MonsterFramework/main/release.json";
         private const string DownloadUrl = "https://raw.githubusercontent.com/RickySpanish343/MonsterFramework/main/" + FileName;
+        private const float CheckEvery = 3600f;
 
         private Coroutine routine;
         private UnityWebRequest request;
+        private Timer hourly;
 
         private class Release
         {
@@ -30,24 +33,46 @@ namespace Oxide.Plugins
 
         private void OnServerInitialized()
         {
-            routine = ServerMgr.Instance.StartCoroutine(Run());
+            Check(false);
+            hourly = timer.Every(CheckEvery, () => Check(true));
         }
 
         private void Unload()
         {
+            hourly?.Destroy();
+            hourly = null;
             if (routine != null && ServerMgr.Instance != null) ServerMgr.Instance.StopCoroutine(routine);
             routine = null;
             CloseRequest();
         }
 
-        private IEnumerator Run()
+        [ConsoleCommand("monsterframework.update")]
+        private void CmdUpdate(ConsoleSystem.Arg arg)
+        {
+            if (arg.Connection != null && !arg.IsConnectionAdmin) return;
+            if (routine != null)
+            {
+                arg.ReplyWith("Already checking for a Monster Framework update.");
+                return;
+            }
+            arg.ReplyWith("Checking for a Monster Framework update. The result is printed in the server console.");
+            Check(false);
+        }
+
+        private void Check(bool quiet)
+        {
+            if (routine != null) return;
+            routine = ServerMgr.Instance.StartCoroutine(Run(quiet));
+        }
+
+        private IEnumerator Run(bool quiet)
         {
             request = UnityWebRequest.Get(ReleaseUrl);
             request.timeout = 30;
             yield return request.SendWebRequest();
             if (request.result != UnityWebRequest.Result.Success)
             {
-                PrintWarning($"Could not check for the latest Monster Framework: {request.error}");
+                if (!quiet) PrintWarning($"Could not check for the latest Monster Framework: {request.error}");
                 CloseRequest();
                 routine = null;
                 yield break;
@@ -61,8 +86,7 @@ namespace Oxide.Plugins
 
             if (installed != null && installed >= latest)
             {
-                if (installed == Running()) Puts($"Monster Framework {installed} is up to date.");
-                else Puts($"Monster Framework {installed} is installed. Restart the server to load it.");
+                if (!quiet) Puts(installed == Running() ? $"Monster Framework {installed} is up to date." : $"Monster Framework {installed} is installed. Restart the server to load it.");
                 routine = null;
                 yield break;
             }
@@ -120,10 +144,10 @@ namespace Oxide.Plugins
 
         private static Version Running()
         {
-            foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
-                if (assembly.GetType(RuntimeType) != null)
-                    return Short(assembly.GetName().Version);
-            return null;
+            Extension extension = Interface.Oxide.GetExtension(ExtensionName);
+            if (extension == null) return null;
+            VersionNumber version = extension.Version;
+            return new Version(version.Major, version.Minor, version.Patch);
         }
 
         private static string Hash(byte[] data)
